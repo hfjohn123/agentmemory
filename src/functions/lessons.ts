@@ -70,6 +70,7 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
       context?: string;
       confidence?: number;
       project?: string;
+      sessionId?: string;
       tags?: string[];
       source?: "crystal" | "manual" | "consolidation";
       sourceIds?: string[];
@@ -83,6 +84,10 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
 
       if (existing && !existing.deleted) {
         reinforceLesson(existing);
+        const sessionId = typeof data.sessionId === "string" ? data.sessionId.trim() : "";
+        if (sessionId && !existing.sessionIds?.includes(sessionId)) {
+          existing.sessionIds = [...(existing.sessionIds ?? []), sessionId];
+        }
         let indexedTextChanged = false;
         if (data.context && !existing.context) {
           existing.context = data.context;
@@ -125,6 +130,9 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
         reinforcements: 0,
         source: data.source || "manual",
         sourceIds: data.sourceIds || [],
+        ...(typeof data.sessionId === "string" && data.sessionId.trim()
+          ? { sessionIds: [data.sessionId.trim()] }
+          : {}),
         project: data.project,
         tags: data.tags || [],
         createdAt: now,

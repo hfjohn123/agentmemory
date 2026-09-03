@@ -26,6 +26,7 @@ describe("Actions Functions", () => {
         priority: 7,
         createdBy: "agent-1",
         project: "webapp",
+        sessionId: "ses_action_835",
         tags: ["bug", "auth"],
       })) as { success: boolean; action: Action; edges: ActionEdge[] };
 
@@ -37,10 +38,15 @@ describe("Actions Functions", () => {
       expect(result.action.priority).toBe(7);
       expect(result.action.createdBy).toBe("agent-1");
       expect(result.action.project).toBe("webapp");
+      expect(result.action.sessionId).toBe("ses_action_835");
       expect(result.action.tags).toEqual(["bug", "auth"]);
       expect(result.action.createdAt).toBeDefined();
       expect(result.action.updatedAt).toBeDefined();
       expect(result.edges).toEqual([]);
+      expect(await kv.get("mem:actions", result.action.id)).toMatchObject({
+        project: "webapp",
+        sessionId: "ses_action_835",
+      });
     });
 
     it("returns error when title is missing", async () => {

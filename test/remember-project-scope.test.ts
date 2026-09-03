@@ -90,6 +90,32 @@ describe("mem::remember — project field stamping", () => {
     expect(stored?.project).toBe("api");
   });
 
+  it("persists and returns the exact supplied sessionId with project", async () => {
+    const sdk = mockSdk();
+    const kv = mockKV();
+    registerRememberFunction(sdk as never, kv as never);
+
+    const result = await sdk.trigger({
+      function_id: "mem::remember",
+      payload: {
+        content: "session-scoped contract",
+        project: "ANT-835",
+        sessionId: "ses_codex_835",
+      },
+    }) as { memory: { id: string; project?: string; sessionIds: string[] } };
+
+    expect(result.memory.project).toBe("ANT-835");
+    expect(result.memory.sessionIds).toEqual(["ses_codex_835"]);
+    const stored = await kv.get<{ project?: string; sessionIds: string[] }>(
+      "mem:memories",
+      result.memory.id,
+    );
+    expect(stored).toMatchObject({
+      project: "ANT-835",
+      sessionIds: ["ses_codex_835"],
+    });
+  });
+
   it("leaves project undefined when not provided (backward-compat)", async () => {
     const sdk = mockSdk();
     const kv = mockKV();

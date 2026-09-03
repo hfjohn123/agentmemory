@@ -10,7 +10,7 @@ The user wants to recall past context about: $ARGUMENTS
 ## Quick start
 
 ```json
-memory_smart_search { "query": "jwt refresh token rotation", "limit": 10 }
+memory_smart_search { "query": "jwt refresh token rotation", "project": "myrepo", "sessionId": "<active-session-id>", "limit": 10 }
 ```
 
 Expected output:
@@ -29,7 +29,7 @@ id, or an importance score. If nothing comes back, say so.
 ## Workflow
 
 1. Call `memory_smart_search` with the user's text as `query` and `limit: 10`.
-   Pass `project` when the user scopes to a specific repo.
+   Pass `project` for project-isolated results and the injected `sessionId` for search diagnostics when an active session exists.
 2. Group results by session. Records carry a provenance channel (`user`, `agent`,
    `tool`, `import`, `shared`); when results conflict, prefer `user` over `agent`
    inference, and flag `shared` records as another teammate's write.

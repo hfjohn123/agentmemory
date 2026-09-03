@@ -2,7 +2,7 @@
 
 import { InMemoryKV } from "./in-memory-kv.js";
 import { createStdioTransport } from "./transport.js";
-import { getAllTools } from "./tools-registry.js";
+import { getAllTools, getUnknownToolArguments } from "./tools-registry.js";
 import { getStandalonePersistPath } from "../config.js";
 import { VERSION } from "../version.js";
 import { generateId } from "../state/schema.js";
@@ -106,6 +106,7 @@ interface Validated {
   concepts?: string[];
   files?: string[];
   project?: string;
+  sessionId?: string;
   agentId?: string;
   query?: string;
   limit?: number;
@@ -118,6 +119,10 @@ interface Validated {
 function validate(toolName: string, args: Record<string, unknown>): Validated {
   if (!IMPLEMENTED_TOOLS.has(toolName)) {
     throw new Error(`Unknown tool: ${toolName}`);
+  }
+  const unknown = getUnknownToolArguments(toolName, args);
+  if (unknown.length > 0) {
+    throw new Error(`Unknown argument(s) for ${toolName}: ${unknown.join(", ")}`);
   }
   const v: Validated = { tool: toolName };
   switch (toolName) {
@@ -136,6 +141,9 @@ function validate(toolName: string, args: Record<string, unknown>): Validated {
       if (typeof args["project"] === "string" && args["project"].trim()) {
         v.project = args["project"].trim();
       }
+      if (typeof args["sessionId"] === "string" && args["sessionId"].trim()) {
+        v.sessionId = args["sessionId"].trim();
+      }
       if (typeof args["agentId"] === "string" && args["agentId"].trim()) {
         v.agentId = args["agentId"].trim();
       }
@@ -149,6 +157,12 @@ function validate(toolName: string, args: Record<string, unknown>): Validated {
       }
       v.query = query.trim();
       v.limit = parseLimit(args["limit"]);
+      if (typeof args["project"] === "string" && args["project"].trim()) {
+        v.project = args["project"].trim();
+      }
+      if (typeof args["sessionId"] === "string" && args["sessionId"].trim()) {
+        v.sessionId = args["sessionId"].trim();
+      }
       const fmt = args["format"];
       if (typeof fmt === "string" && fmt.trim()) {
         v.format = fmt.trim().toLowerCase();
@@ -199,6 +213,7 @@ async function handleProxy(
           files: v.files,
           ...(v.project !== undefined && { project: v.project }),
           ...(v.agentId !== undefined && { agentId: v.agentId }),
+          ...(v.sessionId !== undefined && { sessionId: v.sessionId }),
         }),
       });
       return textResponse(result);
@@ -218,6 +233,8 @@ async function handleProxy(
     }
     case "memory_smart_search": {
       const body: Record<string, unknown> = { query: v.query, limit: v.limit };
+      if (v.project != null) body["project"] = v.project;
+      if (v.sessionId != null) body["sessionId"] = v.sessionId;
       if (v.format != null) body["format"] = v.format;
       if (v.tokenBudget != null) body["token_budget"] = v.tokenBudget;
       const result = await handle.call("/agentmemory/smart-search", {
@@ -264,7 +281,7 @@ async function handleLocal(
     case "memory_save": {
       const id = generateId("mem");
       const isoNow = new Date().toISOString();
-      await kvInstance.set("mem:memories", id, {
+      const memory = {
         id,
         type: v.type,
         title: (v.content || "").slice(0, 80),
@@ -276,10 +293,12 @@ async function handleLocal(
         strength: 7,
         version: 1,
         isLatest: true,
-        sessionIds: [],
-      });
+        sessionIds: v.sessionId ? [v.sessionId] : [],
+        ...(v.project !== undefined && { project: v.project }),
+      };
+      await kvInstance.set("mem:memories", id, memory);
       kvInstance.persist();
-      return textResponse({ saved: id });
+      return textResponse({ saved: id, memory });
     }
 
     case "memory_recall":
@@ -290,6 +309,7 @@ async function handleLocal(
         await kvInstance.list<Record<string, unknown>>("mem:memories");
       const results = all
         .filter((m) => {
+          if (v.project && m["project"] && m["project"] !== v.project) return false;
           const text = [
             typeof m["title"] === "string" ? m["title"] : "",
             typeof m["content"] === "string" ? m["content"] : "",

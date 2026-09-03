@@ -5,6 +5,7 @@ export type McpToolDef = {
     type: "object";
     properties: Record<string, { type: string; description: string }>;
     required?: string[];
+    additionalProperties?: boolean;
   };
 };
 
@@ -83,6 +84,10 @@ export const CORE_TOOLS: McpToolDef[] = [
             "started. Do not use filesystem paths or ad-hoc display names — those " +
             "change across machines and will silently break project scoping.",
         },
+        sessionId: {
+          type: "string",
+          description: "Active AgentMemory session ID that produced this memory",
+        },
         agentId: {
           type: "string",
           description:
@@ -91,6 +96,7 @@ export const CORE_TOOLS: McpToolDef[] = [
         },
       },
       required: ["content"],
+      additionalProperties: false,
     },
   },
   {
@@ -136,8 +142,11 @@ export const CORE_TOOLS: McpToolDef[] = [
           description: "Comma-separated observation IDs to expand",
         },
         limit: { type: "number", description: "Max results (default 10)" },
+        project: { type: "string", description: "Filter results to this project" },
+        sessionId: { type: "string", description: "Active session ID for search diagnostics" },
       },
       required: ["query"],
+      additionalProperties: false,
     },
   },
   {
@@ -381,6 +390,7 @@ export const V050_TOOLS: McpToolDef[] = [
           description: "Priority 1-10 (10 highest)",
         },
         project: { type: "string", description: "Project path" },
+        sessionId: { type: "string", description: "Active AgentMemory session ID" },
         tags: {
           type: "string",
           description: "Comma-separated tags",
@@ -396,6 +406,7 @@ export const V050_TOOLS: McpToolDef[] = [
         },
       },
       required: ["title"],
+      additionalProperties: false,
     },
   },
   {
@@ -782,9 +793,11 @@ export const V070_TOOLS: McpToolDef[] = [
           description: "Initial confidence 0.0-1.0 (default 0.5)",
         },
         project: { type: "string", description: "Project this lesson is about" },
+        sessionId: { type: "string", description: "Active AgentMemory session ID" },
         tags: { type: "string", description: "Comma-separated tags" },
       },
       required: ["content"],
+      additionalProperties: false,
     },
   },
   {
@@ -965,6 +978,16 @@ export function getAllTools(): McpToolDef[] {
     ...V073_TOOLS,
     ...V010_SLOTS_TOOLS,
   ];
+}
+
+export function getUnknownToolArguments(
+  toolName: string,
+  args: Record<string, unknown>,
+): string[] {
+  const tool = getAllTools().find((candidate) => candidate.name === toolName);
+  if (!tool || tool.inputSchema.additionalProperties !== false) return [];
+  const allowed = new Set(Object.keys(tool.inputSchema.properties));
+  return Object.keys(args).filter((key) => !allowed.has(key));
 }
 
 // default switched from "core" (8 essential tools) to "all"

@@ -8,7 +8,7 @@ import type {
   GraphNode,
   GraphEdge,
 } from "../types.js";
-import { getVisibleTools } from "./tools-registry.js";
+import { getVisibleTools, getUnknownToolArguments } from "./tools-registry.js";
 import { timingSafeCompare } from "../auth.js";
 import { getAgentId, isAgentScopeIsolated } from "../config.js";
 
@@ -83,6 +83,13 @@ export function registerMcpEndpoints(
       }
 
       const { name, arguments: args = {} } = req.body;
+      const unknownArguments = getUnknownToolArguments(name, args);
+      if (unknownArguments.length > 0) {
+        return {
+          status_code: 400,
+          body: { error: `Unknown argument(s) for ${name}: ${unknownArguments.join(", ")}` },
+        };
+      }
 
       try {
         switch (name) {
@@ -190,6 +197,7 @@ export function registerMcpEndpoints(
               typeof args.agentId === "string" && args.agentId.trim().length > 0
                 ? (args.agentId as string).trim()
                 : undefined;
+            const sessionId = asNonEmptyString(args.sessionId);
 
             const result = await sdk.trigger({ function_id: "mem::remember", payload: {
               content: args.content,
@@ -198,6 +206,7 @@ export function registerMcpEndpoints(
               files,
               ...(project !== undefined && { project }),
               ...(saveAgentId !== undefined && { agentId: saveAgentId }),
+              ...(sessionId !== undefined && { sessionId }),
             } });
             return {
               status_code: 200,
@@ -284,6 +293,8 @@ export function registerMcpEndpoints(
                 query: args.query,
                 expandIds,
                 limit,
+                project: asNonEmptyString(args.project),
+                sessionId: asNonEmptyString(args.sessionId),
               },
             });
             return {
@@ -684,6 +695,7 @@ export function registerMcpEndpoints(
               description: args.description,
               priority: args.priority,
               project: args.project,
+              sessionId: asNonEmptyString(args.sessionId),
               tags,
               parentId: args.parentId,
               edges: edges.length > 0 ? edges : undefined,
@@ -1108,6 +1120,7 @@ export function registerMcpEndpoints(
               context: args.context || "",
               confidence: args.confidence,
               project: args.project,
+              sessionId: asNonEmptyString(args.sessionId),
               tags: lessonTags,
               source: "manual",
             } });

@@ -677,6 +677,7 @@ export interface Action {
   createdBy: string;
   assignedTo?: string;
   project?: string;
+  sessionId?: string;
   tags: string[];
   sourceObservationIds: string[];
   sourceMemoryIds: string[];
@@ -828,6 +829,7 @@ export interface Lesson {
   reinforcements: number;
   source: "crystal" | "manual" | "consolidation";
   sourceIds: string[];
+  sessionIds?: string[];
   project?: string;
   tags: string[];
   createdAt: string;

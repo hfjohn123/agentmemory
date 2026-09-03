@@ -30,6 +30,7 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
       sourceObservationIds?: string[];
       agentId?: string;
       project?: string;
+      sessionId?: string;
     }) => {
       if (
         !data.content ||
@@ -66,6 +67,10 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
       const project =
         typeof data.project === "string" && data.project.trim().length > 0
           ? data.project.trim()
+          : undefined;
+      const sessionId =
+        typeof data.sessionId === "string" && data.sessionId.trim().length > 0
+          ? data.sessionId.trim()
           : undefined;
 
       return withKeyedLock("mem:remember", async () => {
@@ -158,7 +163,7 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
           content: data.content,
           concepts: data.concepts || [],
           files: data.files || [],
-          sessionIds: [],
+          sessionIds: sessionId ? [sessionId] : [],
           strength: 7,
           version: supersededId ? supersededVersion + 1 : 1,
           parentId: supersededId,

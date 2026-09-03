@@ -62,6 +62,7 @@ describe("Lessons", () => {
         content: "Always use execFile instead of exec",
         context: "Security best practice",
         project: "/test",
+        sessionId: "ses_lesson_1",
         tags: ["security"],
       })) as { success: boolean; action: string; lesson: Lesson };
 
@@ -71,6 +72,11 @@ describe("Lessons", () => {
       expect(result.lesson.content).toBe("Always use execFile instead of exec");
       expect(result.lesson.source).toBe("manual");
       expect(result.lesson.reinforcements).toBe(0);
+      expect(result.lesson.sessionIds).toEqual(["ses_lesson_1"]);
+      expect(await kv.get("mem:lessons", result.lesson.id)).toMatchObject({
+        project: "/test",
+        sessionIds: ["ses_lesson_1"],
+      });
     });
 
     it("accepts custom confidence", async () => {
@@ -107,6 +113,22 @@ describe("Lessons", () => {
       expect(second.lesson.id).toBe(originalId);
       expect(second.lesson.reinforcements).toBe(1);
       expect(second.lesson.confidence).toBeGreaterThan(0.5);
+    });
+
+    it("preserves each supplied session when strengthening a lesson", async () => {
+      await sdk.trigger("mem::lesson-save", {
+        content: "Keep session provenance",
+        project: "ANT-835",
+        sessionId: "ses_lesson_a",
+      });
+      const result = (await sdk.trigger("mem::lesson-save", {
+        content: "Keep session provenance",
+        project: "ANT-835",
+        sessionId: "ses_lesson_b",
+      })) as { action: string; lesson: Lesson };
+
+      expect(result.action).toBe("strengthened");
+      expect(result.lesson.sessionIds).toEqual(["ses_lesson_a", "ses_lesson_b"]);
     });
 
     it("rejects empty content", async () => {

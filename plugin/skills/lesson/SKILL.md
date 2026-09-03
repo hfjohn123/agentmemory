@@ -14,7 +14,8 @@ memory_lesson_save {
   "content": "Run vitest with --run in CI contexts; bare vitest enters watch mode and hangs the pipeline.",
   "context": "any script or CI step that invokes vitest",
   "confidence": 0.7,
-  "project": "myrepo"
+  "project": "myrepo",
+  "sessionId": "<active-session-id>"
 }
 ```
 
@@ -33,7 +34,7 @@ Memories store facts; lessons store behavior. A lesson carries a confidence scor
 1. Distill the user's text into one imperative rule: what to do or avoid, plus the consequence that makes it matter. Strip the incident narrative, and keep credentials and other secrets out of the content.
 2. Set `context` to the trigger situation, the moment a future session should apply it.
 3. Set `confidence`: 0.7 for a direct user correction, 0.5 for a self-observed pattern.
-4. Scope with `project` when the rule is repo-specific; omit it for universal rules.
+4. Scope with `project` when the rule is repo-specific. When session context was injected, pass its exact `sessionId`; duplicate strengthening retains every contributing session. Omit either field when no active scope exists.
 5. If this is a repeat correction, save the same `content` verbatim; the duplicate strengthens the existing lesson instead of forking a variant.
 6. Confirm with the rule as saved, so the user can veto a bad distillation.
 

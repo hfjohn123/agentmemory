@@ -1016,6 +1016,7 @@ export function registerApiTriggers(
         sourceObservationIds?: string[];
         project?: string;
         agentId?: string;
+        sessionId?: string;
       }>,
     ): Promise<Response> => {
       const authErr = checkAuth(req, secret);
@@ -1043,6 +1044,9 @@ export function registerApiTriggers(
           ...(req.body.ttlDays !== undefined && { ttlDays: req.body.ttlDays }),
           ...(req.body.sourceObservationIds !== undefined && { sourceObservationIds: req.body.sourceObservationIds }),
           ...(req.body.project !== undefined && { project: req.body.project }),
+          ...(typeof req.body.sessionId === "string" && req.body.sessionId.trim()
+            ? { sessionId: req.body.sessionId.trim() }
+            : {}),
           ...(typeof req.body.agentId === "string" && req.body.agentId.trim()
             ? { agentId: req.body.agentId.trim() }
             : {}),
@@ -1183,9 +1187,9 @@ export function registerApiTriggers(
         expandIds?: Array<string | { obsId: string; sessionId: string }>;
         limit?: number;
         project?: string;
+        sessionId?: string;
         includeLessons?: boolean;
         agentId?: string;
-        sessionId?: string;
         source?: string;
       }>,
     ): Promise<Response> => {
@@ -2310,6 +2314,7 @@ export function registerApiTriggers(
         priority?: number;
         createdBy?: string;
         project?: string;
+        sessionId?: string;
         tags?: string[];
         parentId?: string;
         edges?: Array<{ type: string; targetActionId: string }>;
@@ -2320,7 +2325,20 @@ export function registerApiTriggers(
       if (!req.body?.title) {
         return { status_code: 400, body: { error: "title is required" } };
       }
-      const result = await sdk.trigger({ function_id: "mem::action-create", payload: req.body });
+      const body = req.body;
+      const result = await sdk.trigger({ function_id: "mem::action-create", payload: {
+        title: body.title,
+        description: body.description,
+        priority: body.priority,
+        createdBy: body.createdBy,
+        project: body.project,
+        sessionId: typeof body.sessionId === "string" && body.sessionId.trim()
+          ? body.sessionId.trim()
+          : undefined,
+        tags: body.tags,
+        parentId: body.parentId,
+        edges: body.edges,
+      } });
       return { status_code: 201, body: result };
     },
   );
@@ -3167,6 +3185,9 @@ export function registerApiTriggers(
         context: body.context || "",
         confidence: typeof body.confidence === "number" ? body.confidence : undefined,
         project: typeof body.project === "string" ? body.project : undefined,
+        sessionId: typeof body.sessionId === "string" && body.sessionId.trim()
+          ? body.sessionId.trim()
+          : undefined,
         tags,
         source: "manual",
       },

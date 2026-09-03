@@ -129,6 +129,41 @@ describe("Smart Search Function", () => {
     expect(result.results[0]).not.toHaveProperty("narrative");
   });
 
+  it("filters compact results to the requested project and exposes the scope", async () => {
+    const other = makeObs({ id: "obs_other", sessionId: "ses_other", title: "Other auth" });
+    await kv.set("mem:sessions", "ses_other", {
+      id: "ses_other", project: "other-project", cwd: "/other",
+      startedAt: "2026-02-01T00:00:00Z", status: "completed", observationCount: 1,
+    } as Session);
+    searchResults.unshift({
+      observation: other, bm25Score: 1, vectorScore: 0,
+      combinedScore: 1, sessionId: "ses_other",
+    });
+
+    const result = (await sdk.trigger("mem::smart-search", {
+      query: "auth", project: "my-project",
+    })) as { project?: string; results: CompactSearchResult[] };
+
+    expect(result.project).toBe("my-project");
+    expect(result.results.map((item) => item.sessionId)).toEqual(["ses_1", "ses_1"]);
+  });
+
+  it("filters expanded observations to the requested project", async () => {
+    const other = makeObs({ id: "obs_other", sessionId: "ses_other" });
+    await kv.set("mem:sessions", "ses_other", {
+      id: "ses_other", project: "other-project", cwd: "/other",
+      startedAt: "2026-02-01T00:00:00Z", status: "completed", observationCount: 1,
+    } as Session);
+    await kv.set("mem:obs:ses_other", "obs_other", other);
+
+    const result = (await sdk.trigger("mem::smart-search", {
+      expandIds: ["obs_1", "obs_other"], project: "my-project",
+    })) as { project?: string; results: Array<{ sessionId: string }> };
+
+    expect(result.project).toBe("my-project");
+    expect(result.results.map((item) => item.sessionId)).toEqual(["ses_1"]);
+  });
+
   it("expand mode returns full observations for given IDs", async () => {
     const result = (await sdk.trigger("mem::smart-search", {
       expandIds: ["obs_1"],

@@ -5,6 +5,8 @@ import type {
   CompressedObservation,
   HybridSearchResult,
   Lesson,
+  Memory,
+  Session,
 } from "../types.js";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
@@ -128,6 +130,10 @@ export function registerSmartSearchFunction(
             'Pass agentId: "*" to opt in to a wildcard read.',
         );
       }
+      const project =
+        typeof data.project === "string" && data.project.trim()
+          ? data.project.trim()
+          : undefined;
 
       if (data.expandIds && data.expandIds.length > 0) {
         const raw = data.expandIds.slice(0, 20);
@@ -156,9 +162,16 @@ export function registerSmartSearchFunction(
           if (r) expanded.push(r);
         }
 
-        const scoped = filterAgentId
-          ? expanded.filter((e) => e.observation.agentId === filterAgentId)
+        const projectScoped = project
+          ? (await Promise.all(expanded.map(async (entry) =>
+              (await matchesProject(kv, entry.obsId, entry.sessionId, project))
+                ? entry
+                : null,
+            ))).filter((entry): entry is NonNullable<typeof entry> => entry !== null)
           : expanded;
+        const scoped = filterAgentId
+          ? projectScoped.filter((e) => e.observation.agentId === filterAgentId)
+          : projectScoped;
 
         void recordAccessBatch(
           kv,
@@ -173,7 +186,7 @@ export function registerSmartSearchFunction(
           filteredOutOfScope: expanded.length - scoped.length,
           truncated,
         });
-        return { mode: "expanded", results: scoped, truncated };
+        return { mode: "expanded", results: scoped, truncated, ...(project && { project }) };
       }
 
       if (!data.query || typeof data.query !== "string" || !data.query.trim()) {
@@ -192,22 +205,27 @@ export function registerSmartSearchFunction(
       // is a defensible middle ground: enough headroom for a small
       // workload, capped at 300 so a 100-limit request never asks for
       // thousands of hits.
-      const overFetchLimit = filterAgentId
+      const overFetchLimit = filterAgentId || project
         ? Math.min(limit * 3, 300)
         : limit;
 
       const [hybridResults, lessons] = await Promise.all([
         searchFn(data.query, overFetchLimit),
         includeLessons
-          ? recallLessons(sdk, data.query, lessonLimit, data.project)
+          ? recallLessons(sdk, data.query, lessonLimit, project)
           : Promise.resolve([]),
       ]);
 
-      const filteredHybrid = filterAgentId
-        ? hybridResults
-            .filter((r) => r.observation.agentId === filterAgentId)
-            .slice(0, limit)
-        : hybridResults.slice(0, limit);
+      const projectScopedHybrid = project
+        ? (await Promise.all(hybridResults.map(async (result) =>
+            (await matchesProject(kv, result.observation.id, result.sessionId, project))
+              ? result
+              : null,
+          ))).filter((result): result is NonNullable<typeof result> => result !== null)
+        : hybridResults;
+      const filteredHybrid = (filterAgentId
+        ? projectScopedHybrid.filter((r) => r.observation.agentId === filterAgentId)
+        : projectScopedHybrid).slice(0, limit);
 
       const compact: CompactSearchResult[] = filteredHybrid.map((r) => ({
         obsId: r.observation.id,
@@ -280,11 +298,25 @@ export function registerSmartSearchFunction(
         mode: "compact";
         results: CompactSearchResult[];
         lessons?: CompactLessonResult[];
+        project?: string;
       } = { mode: "compact", results: compact };
       if (includeLessons) response.lessons = lessons;
+      if (project) response.project = project;
       return response;
     },
   );
+}
+
+async function matchesProject(
+  kv: StateKV,
+  obsId: string,
+  sessionId: string,
+  project: string,
+): Promise<boolean> {
+  const session = await kv.get<Session>(KV.sessions, sessionId).catch(() => null);
+  if (session) return session.project === project;
+  const memory = await kv.get<Memory>(KV.memories, obsId).catch(() => null);
+  return !memory?.project || memory.project === project;
 }
 
 async function recallLessons(

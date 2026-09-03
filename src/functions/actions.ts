@@ -13,6 +13,7 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
       priority?: number;
       createdBy?: string;
       project?: string;
+      sessionId?: string;
       tags?: string[];
       parentId?: string;
       sourceObservationIds?: string[];
@@ -35,6 +36,10 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
           updatedAt: now,
           createdBy: data.createdBy || "unknown",
           project: data.project,
+          sessionId:
+            typeof data.sessionId === "string" && data.sessionId.trim()
+              ? data.sessionId.trim()
+              : undefined,
           tags: data.tags || [],
           sourceObservationIds: data.sourceObservationIds || [],
           sourceMemoryIds: data.sourceMemoryIds || [],

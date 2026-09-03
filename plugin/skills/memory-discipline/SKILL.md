@@ -9,13 +9,13 @@ Memory only pays off when reads happen before the work and writes happen at deci
 ## Quick start
 
 ```json
-memory_smart_search { "query": "auth refresh flow", "project": "myrepo", "limit": 5 }
+memory_smart_search { "query": "auth refresh flow", "project": "myrepo", "sessionId": "<active-session-id>", "limit": 5 }
 ```
 
 at task start, then at each settled decision:
 
 ```json
-memory_save { "content": "Chose cursor pagination over offset; offset scans broke past 100k rows in db/list.ts.", "concepts": "cursor-pagination, offset-scan-limit", "files": "src/db/list.ts" }
+memory_save { "content": "Chose cursor pagination over offset; offset scans broke past 100k rows in db/list.ts.", "concepts": "cursor-pagination, offset-scan-limit", "files": "src/db/list.ts", "project": "myrepo", "sessionId": "<active-session-id>" }
 ```
 
 ## Why
@@ -29,6 +29,10 @@ Hooks capture what happened automatically. What they cannot capture is judgment:
 3. On user correction of your approach: save a lesson instead of a memory (the `lesson` skill). Lessons carry confidence and resurface before similar work; memories carry facts.
 4. Before repeating a task type you have been corrected on: `memory_lesson_recall` with the task type as query.
 5. Session end: stop. Hooks summarize and consolidate; a manual recap save duplicates them.
+
+## Session and project contract
+
+`memory_save`, `memory_action_create`, and `memory_lesson_save` accept optional `project` and `sessionId`; callers with an injected active session pass both. `memory_smart_search` accepts optional `project` for result isolation and `sessionId` for search diagnostics. Callers without an active session may omit either field. MCP calls reject unknown arguments so misspelled scope fields cannot be silently discarded.
 
 ## What qualifies
 

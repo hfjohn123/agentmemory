@@ -7,7 +7,7 @@ agentmemory exposes 54 MCP tools. 8 are in the lean core set (`--tools core` or 
 
 | Tool | Core | Parameters | Purpose |
 | --- | --- | --- | --- |
-| `memory_action_create` |  | `title`*: string, `description`: string, `priority`: number, `project`: string, `tags`: string, `parentId`: string, `requires`: string | Create an actionable work item with typed dependencies. Actions track what agents need to do and how work items relate to each other. |
+| `memory_action_create` |  | `title`*: string, `description`: string, `priority`: number, `project`: string, `sessionId`: string, `tags`: string, `parentId`: string, `requires`: string | Create an actionable work item with typed dependencies. Actions track what agents need to do and how work items relate to each other. |
 | `memory_action_update` |  | `actionId`*: string, `status`: string, `result`: string, `priority`: number | Update an action's status, priority, or details. Set status to 'done' to complete it and unblock dependent actions. |
 | `memory_audit` |  | `operation`: string, `limit`: number | View the audit trail of memory operations. |
 | `memory_checkpoint` |  | `operation`*: string, `name`: string, `checkpointId`: string, `status`: string, `type`: string, `linkedActionIds`: string | Create or resolve an external checkpoint (CI result, approval, deploy status) that gates action progress. |
@@ -30,7 +30,7 @@ agentmemory exposes 54 MCP tools. 8 are in the lean core set (`--tools core` or 
 | `memory_lease` |  | `actionId`*: string, `agentId`*: string, `operation`*: string, `result`: string, `ttlMs`: number | Acquire, release, or renew an exclusive lease on an action. Prevents multiple agents from working on the same thing. |
 | `memory_lesson_delete` |  | `lessonId`*: string | Soft-delete a lesson by id. Deleted lessons are excluded from recall and list; re-saving the same content creates a fresh lesson. |
 | `memory_lesson_recall` |  | `query`*: string, `project`: string, `minConfidence`: number, `limit`: number | Search lessons by query. Returns lessons sorted by confidence and recency. Use to check what the agent has learned before making decisions. |
-| `memory_lesson_save` | yes | `content`*: string, `context`: string, `confidence`: number, `project`: string, `tags`: string | Save a lesson learned from this session. Lessons have confidence scores that strengthen when reinforced and decay when not used. Duplicate content auto-strengthens the existing lesson. |
+| `memory_lesson_save` | yes | `content`*: string, `context`: string, `confidence`: number, `project`: string, `sessionId`: string, `tags`: string | Save a lesson learned from this session. Lessons have confidence scores that strengthen when reinforced and decay when not used. Duplicate content auto-strengthens the existing lesson. |
 | `memory_mesh_sync` |  | `peerId`: string, `direction`: string | Sync memories and actions with peer agentmemory instances for multi-agent collaboration. |
 | `memory_next` |  | `project`: string, `agentId`: string | Get the single most important next action to work on. Combines dependency resolution, priority, and recency into a score. |
 | `memory_obsidian_export` |  | `vaultDir`: string, `types`: string | Export memories, lessons, and crystals as Obsidian-compatible Markdown files with YAML frontmatter and wikilinks for graph view. |
@@ -40,7 +40,7 @@ agentmemory exposes 54 MCP tools. 8 are in the lean core set (`--tools core` or 
 | `memory_reflect` | yes | `project`: string, `maxClusters`: number | Traverse the knowledge graph, group related memories by concept clusters, and synthesize higher-order insights via LLM. Returns new and reinforced insights. |
 | `memory_relations` |  | `memoryId`*: string, `maxHops`: number, `minConfidence`: number | Query the memory relationship graph. |
 | `memory_routine_run` |  | `routineId`*: string, `project`: string, `initiatedBy`: string | Instantiate a frozen workflow routine, creating actions for each step with proper dependencies. |
-| `memory_save` | yes | `content`*: string, `type`: string, `concepts`: string, `files`: string, `project`: string, `agentId`: string | Explicitly save an important insight, decision, or pattern to long-term memory. |
+| `memory_save` | yes | `content`*: string, `type`: string, `concepts`: string, `files`: string, `project`: string, `sessionId`: string, `agentId`: string | Explicitly save an important insight, decision, or pattern to long-term memory. |
 | `memory_sentinel_create` |  | `name`*: string, `type`*: string, `config`: string, `linkedActionIds`: string, `expiresInMs`: number | Create an event-driven sentinel that watches for conditions (webhook, timer, threshold, pattern, approval) and auto-unblocks gated actions when triggered. |
 | `memory_sentinel_trigger` |  | `sentinelId`*: string, `result`: string | Externally fire a sentinel, providing an optional result payload. Unblocks any gated actions. |
 | `memory_sessions` | yes | none | List recent sessions with their status and observation counts. |
@@ -54,7 +54,7 @@ agentmemory exposes 54 MCP tools. 8 are in the lean core set (`--tools core` or 
 | `memory_slot_get` |  | `label`*: string | Read a single slot by label. |
 | `memory_slot_list` |  | none | List all memory slots (pinned + project + global). Slots are editable, size-limited memory units the agent can read and modify across sessions. |
 | `memory_slot_replace` |  | `label`*: string, `content`*: string | Replace slot content in place. Fails if content exceeds sizeLimit. |
-| `memory_smart_search` | yes | `query`*: string, `expandIds`: string, `limit`: number | Hybrid semantic+keyword search with progressive disclosure. |
+| `memory_smart_search` | yes | `query`*: string, `expandIds`: string, `limit`: number, `project`: string, `sessionId`: string | Hybrid semantic+keyword search with progressive disclosure. |
 | `memory_snapshot_create` |  | `message`: string | Create a git-versioned snapshot of current memory state. |
 | `memory_team_feed` |  | `limit`: number | Get recent shared items from all team members. |
 | `memory_team_share` |  | `itemId`*: string, `itemType`*: string | Share a memory or observation with team members. |
