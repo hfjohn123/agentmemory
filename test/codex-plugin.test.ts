@@ -57,7 +57,7 @@ describe("Codex plugin manifest (developers.openai.com/codex/plugins)", () => {
     const codexVer = readJson<{ version: string }>(
       join(pluginRoot, ".codex-plugin/plugin.json"),
     ).version;
-    expect(codexVer).toBe(pkgVer);
+    expect(codexVer.split("+")[0]).toBe(pkgVer);
   });
 
   it("all referenced manifest paths resolve to existing files / directories", () => {
@@ -90,6 +90,14 @@ describe("Codex plugin manifest (developers.openai.com/codex/plugins)", () => {
     expect(mcp.mcpServers.agentmemory?.env?.AGENTMEMORY_SECRET).toMatch(
       /\$\{AGENTMEMORY_SECRET:-/,
     );
+
+    const pkg = readJson<{ version: string }>(join(repoRoot, "package.json"));
+    expect(mcp.mcpServers.agentmemory?.command).toBe("npx");
+    expect(mcp.mcpServers.agentmemory?.args).toEqual([
+      "-y",
+      `@agentmemory/agentmemory@${pkg.version}`,
+      "mcp",
+    ]);
   });
 
   it("hooks.codex.json contains only events Codex supports (no Subagent / SessionEnd / Notification / TaskCompleted / PostToolUseFailure)", () => {
