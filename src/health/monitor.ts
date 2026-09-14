@@ -2,7 +2,9 @@ import type { ISdk } from "iii-sdk";
 import type { HealthSnapshot } from "../types.js";
 import type { StateKV } from "../state/kv.js";
 import { KV } from "../state/schema.js";
-import { evaluateHealth } from "./thresholds.js";
+import { createHealthEvaluator } from "./thresholds.js";
+import { getHeapStatistics } from "node:v8";
+import { totalmem } from "node:os";
 
 export function registerHealthMonitor(
   sdk: ISdk,
@@ -11,6 +13,7 @@ export function registerHealthMonitor(
   let connectionState = "connected";
   let prevCpuUsage = process.cpuUsage();
   let prevCpuTime = Date.now();
+  const evaluateHealth = createHealthEvaluator();
 
   if (typeof sdk.on === "function") {
     sdk.on("connection_state", (state?: unknown) => {
@@ -58,9 +61,16 @@ export function registerHealthMonitor(
           setTimeout(() => reject(new Error("timeout")), KV_PROBE_TIMEOUT),
         ),
       ]);
-      kvConnectivity = { status: "ok", latencyMs: Math.round((performance.now() - kvStart) * 100) / 100 };
+      kvConnectivity = {
+        status: "ok",
+        latencyMs: Math.round((performance.now() - kvStart) * 100) / 100,
+      };
     } catch {
-      kvConnectivity = { status: "error", error: "kv_probe_failed", latencyMs: Math.round((performance.now() - kvStart) * 100) / 100 };
+      kvConnectivity = {
+        status: "error",
+        error: "kv_probe_failed",
+        latencyMs: Math.round((performance.now() - kvStart) * 100) / 100,
+      };
     }
 
     const snapshot: HealthSnapshot = {
@@ -69,6 +79,11 @@ export function registerHealthMonitor(
       memory: {
         heapUsed: mem.heapUsed,
         heapTotal: mem.heapTotal,
+        heapSizeLimit: getHeapStatistics().heap_size_limit,
+        rssBudget: Math.min(
+          totalmem(),
+          process.constrainedMemory?.() || Infinity,
+        ),
         rss: mem.rss,
         external: mem.external,
       },

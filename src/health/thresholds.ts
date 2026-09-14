@@ -7,7 +7,6 @@ interface ThresholdConfig {
   cpuCriticalPercent: number;
   memoryWarnPercent: number;
   memoryCriticalPercent: number;
-  memoryRssFloorBytes: number;
 }
 
 const DEFAULTS: ThresholdConfig = {
@@ -17,13 +16,27 @@ const DEFAULTS: ThresholdConfig = {
   cpuCriticalPercent: 90,
   memoryWarnPercent: 80,
   memoryCriticalPercent: 95,
-  memoryRssFloorBytes: 512 * 1024 * 1024,
 };
+
+type MemoryStreaks = Record<"heap" | "rss", { warn: number; critical: number }>;
+
+export function createHealthEvaluator() {
+  const streaks: MemoryStreaks = {
+    heap: { warn: 0, critical: 0 },
+    rss: { warn: 0, critical: 0 },
+  };
+  return (snapshot: HealthSnapshot) => evaluateHealth(snapshot, {}, streaks);
+}
 
 export function evaluateHealth(
   snapshot: HealthSnapshot,
   config: Partial<ThresholdConfig> = {},
-): { status: "healthy" | "degraded" | "critical"; alerts: string[]; notes: string[] } {
+  streaks?: MemoryStreaks,
+): {
+  status: "healthy" | "degraded" | "critical";
+  alerts: string[];
+  notes: string[];
+} {
   const cfg = { ...DEFAULTS, ...config };
   const alerts: string[] = [];
   const notes: string[] = [];
@@ -59,21 +72,43 @@ export function evaluateHealth(
     degraded = true;
   }
 
-  const memPercent =
-    snapshot.memory.heapTotal > 0
-      ? (snapshot.memory.heapUsed / snapshot.memory.heapTotal) * 100
-      : 0;
-  const rss = snapshot.memory.rss ?? 0;
-  const rssAboveFloor = rss >= cfg.memoryRssFloorBytes;
-  const memMb = Math.round(rss / (1024 * 1024));
-  if (memPercent > cfg.memoryCriticalPercent && rssAboveFloor) {
-    alerts.push(`memory_critical_${Math.round(memPercent)}%_rss${memMb}mb`);
-    critical = true;
-  } else if (memPercent > cfg.memoryWarnPercent && rssAboveFloor) {
-    alerts.push(`memory_warn_${Math.round(memPercent)}%_rss${memMb}mb`);
-    degraded = true;
-  } else if (memPercent > cfg.memoryWarnPercent) {
-    notes.push(`memory_heap_tight_${Math.round(memPercent)}%_rss${memMb}mb`);
+  const memMb = Math.round(snapshot.memory.rss / (1024 * 1024));
+  for (const metric of ["heap", "rss"] as const) {
+    const used =
+      metric === "heap" ? snapshot.memory.heapUsed : snapshot.memory.rss;
+    const limit =
+      metric === "heap"
+        ? snapshot.memory.heapSizeLimit
+        : snapshot.memory.rssBudget;
+    const valid =
+      typeof limit === "number" && Number.isFinite(limit) && limit > 0;
+    const percent = valid ? (used / limit) * 100 : 0;
+    const high = percent > cfg.memoryWarnPercent;
+    const veryHigh = percent > cfg.memoryCriticalPercent;
+    const count = streaks?.[metric];
+    if (count) {
+      count.warn = high ? Math.min(3, count.warn + 1) : 0;
+      count.critical = veryHigh ? Math.min(3, count.critical + 1) : 0;
+    }
+    if (!valid) {
+      notes.push(
+        metric === "heap"
+          ? "memory_heap_limit_unavailable"
+          : "memory_rss_budget_unavailable",
+      );
+    } else if (veryHigh && (!count || count.critical >= 3)) {
+      alerts.push(
+        `memory_${metric}_critical_${Math.round(percent)}%_rss${memMb}mb`,
+      );
+      critical = true;
+    } else if (high && (!count || count.warn >= 3)) {
+      alerts.push(
+        `memory_${metric}_warn_${Math.round(percent)}%_rss${memMb}mb`,
+      );
+      degraded = true;
+    } else if (high) {
+      notes.push(`memory_${metric}_pending_${Math.round(percent)}%`);
+    }
   }
 
   const status = critical ? "critical" : degraded ? "degraded" : "healthy";
