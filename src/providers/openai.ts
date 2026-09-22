@@ -77,9 +77,13 @@ export class OpenAIProvider implements MemoryProvider {
 
   private async call(systemPrompt: string, userPrompt: string): Promise<string> {
     const url = buildChatUrl(this.baseUrl, this.isAzure, this.azureApiVersion);
+    const tokenLimitField =
+      this.isAzure || new URL(url).hostname === "api.openai.com"
+        ? "max_completion_tokens"
+        : "max_tokens";
     const body: Record<string, unknown> = {
       model: this.model,
-      max_tokens: this.maxTokens,
+      [tokenLimitField]: this.maxTokens,
       // OpenAI API spec defines `stream` as defaulting to false, so omitting
       // it should yield a JSON response. Some OpenAI-compatible proxies
       // (notably 9Router < 0.4.56 — see decolua/9router#1260) default to
