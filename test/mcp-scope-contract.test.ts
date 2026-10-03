@@ -24,6 +24,27 @@ describe("MCP session and project scope contract", () => {
 });
 
 describe("daemon MCP scope propagation", () => {
+  it("preserves the snapshot skip result and explains the paused backup contract", async () => {
+    const sdk = mockSdk();
+    const skipped = {
+      success: false,
+      skipped: true,
+      reason: "automatic-graph-disabled",
+      error: "Full snapshots paused; previous backup unchanged",
+    };
+    sdk.registerFunction("mem::snapshot-create", async () => skipped);
+    registerMcpEndpoints(sdk as never, mockKV() as never);
+
+    const response = await sdk.fns.get("mcp::tools::call")!({ body: {
+      name: "memory_snapshot_create",
+      arguments: { message: "Graph off" },
+    } }) as { body: { content: Array<{ text: string }> } };
+
+    expect(JSON.parse(response.body.content[0].text)).toEqual(skipped);
+    expect(getAllTools().find((tool) => tool.name === "memory_snapshot_create")?.description)
+      .toMatch(/GRAPH_EXTRACTION_ENABLED=false.*automatic-graph-disabled.*previous backup unchanged/);
+  });
+
   it("forwards exact session and project values to persistence handlers", async () => {
     const sdk = mockSdk();
     const kv = mockKV();

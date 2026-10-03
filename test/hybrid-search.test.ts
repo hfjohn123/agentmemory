@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { HybridSearch } from "../src/state/hybrid-search.js";
 import { SearchIndex } from "../src/state/search-index.js";
+import { VectorIndex } from "../src/state/vector-index.js";
+import { KV } from "../src/state/schema.js";
 import type { CompressedObservation, EmbeddingProvider } from "../src/types.js";
 
 function makeObs(
@@ -48,8 +50,55 @@ describe("HybridSearch", () => {
   let kv: ReturnType<typeof mockKV>;
 
   beforeEach(() => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "true");
     bm25 = new SearchIndex();
     kv = mockKV();
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("keeps BM25 results without entity graph reads when automatic graph work is disabled", async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
+    const observation = makeObs({ title: "JWT authentication" });
+    bm25.add(observation);
+    await kv.set(KV.observations(observation.sessionId), observation.id, observation);
+    const list = vi.spyOn(kv, "list");
+    const hybrid = new HybridSearch(bm25, null, null, kv as never);
+
+    const results = await hybrid.search("JWT");
+
+    expect(results.map((result) => result.observation.id)).toEqual([observation.id]);
+    expect(results[0].bm25Score).toBeGreaterThan(0);
+    expect(results[0].graphScore).toBe(0);
+    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphNodes);
+    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphEdges);
+  });
+
+  it("keeps vector results without chunk graph expansion when automatic graph work is disabled", async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
+    const observation = makeObs();
+    await kv.set(KV.observations(observation.sessionId), observation.id, observation);
+    const embedding = new Float32Array([1, 0]);
+    const vector = new VectorIndex();
+    vector.add(observation.id, observation.sessionId, embedding);
+    const provider = {
+      name: "test",
+      dimensions: 2,
+      embed: vi.fn(async () => embedding),
+      embedBatch: vi.fn(async () => [embedding]),
+    } satisfies EmbeddingProvider;
+    const list = vi.spyOn(kv, "list");
+    const hybrid = new HybridSearch(bm25, vector, provider, kv as never);
+
+    const results = await hybrid.search("unmatched");
+
+    expect(results.map((result) => result.observation.id)).toEqual([observation.id]);
+    expect(results[0].bm25Score).toBe(0);
+    expect(results[0].vectorScore).toBe(1);
+    expect(results[0].graphScore).toBe(0);
+    expect(provider.embed).toHaveBeenCalledWith("unmatched");
+    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphNodes);
+    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphEdges);
   });
 
   it("returns BM25-only results when no vector index is provided", async () => {

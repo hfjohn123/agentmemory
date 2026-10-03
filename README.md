@@ -946,7 +946,7 @@ PostToolUse hook fires
 
 Stop / SessionEnd hook fires
   -> Summarize session
-  -> Knowledge graph extraction (if GRAPH_EXTRACTION_ENABLED=true)
+  -> Structural knowledge graph extraction (unless GRAPH_EXTRACTION_ENABLED=false)
   -> Slot reflection (if SLOT_REFLECT_ENABLED=true)
 
 SessionStart hook fires
@@ -1017,7 +1017,7 @@ Triple-stream retrieval combining three signals:
 
 Fused with Reciprocal Rank Fusion (RRF, k=60) and session-diversified (max 3 results per session).
 
-When a vector index is populated, `mem::search` (behind `memory_recall`) uses the hybrid BM25 + vector ranker. Without embeddings it uses BM25. `smart-search` can additionally fuse structural graph matches when graph data exists, including in keyless mode. Lesson recall runs on a dedicated in-memory BM25 index instead of scanning the whole corpus per query. Superseded memory versions are excluded from every recall path; the version chain keeps their history.
+When a vector index is populated, `mem::search` (behind `memory_recall`) uses the hybrid BM25 + vector ranker. Without embeddings it uses BM25. `smart-search` can additionally fuse structural graph matches when graph data exists, including in keyless mode, unless `GRAPH_EXTRACTION_ENABLED=false`. Lesson recall runs on a dedicated in-memory BM25 index instead of scanning the whole corpus per query. Superseded memory versions are excluded from every recall path; the version chain keeps their history.
 
 BM25 tokenizes Greek, Cyrillic, Hebrew, Arabic, and accented Latin out of the box. For Chinese / Japanese / Korean memories, install the optional segmenters (`npm install @node-rs/jieba tiny-segmenter`) to split CJK runs into word-level tokens; without them, agentmemory soft-falls to whole-run tokenization and prints a one-time hint on stderr.
 
@@ -1470,12 +1470,18 @@ AGENTMEMORY_AUTO_COMPRESS=true
 
 LLM-written observation compression requires both lines: access to an LLM provider (including this explicit subscription fallback) and `AGENTMEMORY_AUTO_COMPRESS=true`. A provider by itself leaves the default synthetic compression path in place.
 
-Consolidation (graph nodes, lessons, crystals) is on by default whenever an LLM provider is configured. Explicitly opt out with `CONSOLIDATION_ENABLED=false` if you want LLM-free operation. Graph extraction is a separate flag:
+Consolidation is on by default whenever an LLM provider is configured. Explicitly opt out with `CONSOLIDATION_ENABLED=false` if you want LLM-free operation. Automatic graph work uses a separate flag:
 
 ```env
 GRAPH_EXTRACTION_ENABLED=true
 # CONSOLIDATION_ENABLED=false   # opt out of auto-consolidation
 ```
+
+When `GRAPH_EXTRACTION_ENABLED` is unset, session end runs keyless structural extraction. Set it to `true` to also enable LLM relation extraction with a configured provider. Set it to the exact value `false` to disable implicit graph extraction, reflection graph inputs, supersession graph updates, and graph retrieval in hybrid search. Semantic and lesson reflection, sibling-memory counts, and lexical and vector search continue.
+
+Full git snapshots also pause while the flag is `false`. Snapshot creation returns `{ success: false, skipped: true, reason: "automatic-graph-disabled", error: "..." }` without storage or git work. REST returns HTTP 409, and MCP preserves the result. The previous backup remains unchanged. Manual graph extraction, build, and import remain available, and existing graph data is not deleted.
+
+The paused graph is not kept current when memories are superseded. Re-enabling automatic graph work does not automatically reconcile supersessions skipped while the flag was `false`.
 
 ### Environment Variables
 
@@ -1584,7 +1590,10 @@ Create `~/.agentmemory/.env`:
                                    #   log only per Claude Code docs)
                                    # Observations are still captured via
                                    # PostToolUse regardless of this flag.
-# GRAPH_EXTRACTION_ENABLED=false
+# GRAPH_EXTRACTION_ENABLED=false  # Disable implicit graph work and pause full snapshots.
+                                   # Unset keeps keyless structural extraction on.
+                                   # True adds LLM relations with a provider.
+                                   # Manual graph operations remain available.
 # AGENTMEMORY_LLM_NOTHINK=1        # Local reasoning models only: ask the
                                    # model to skip its hidden thinking pass
                                    # during graph extraction. Faster runs;
@@ -1594,7 +1603,7 @@ Create `~/.agentmemory/.env`:
 # OBSIDIAN_AUTO_EXPORT=false
 # AGENTMEMORY_EXPORT_ROOT=~/.agentmemory
 # CLAUDE_MEMORY_BRIDGE=false
-# SNAPSHOT_ENABLED=false
+# SNAPSHOT_ENABLED=false          # Full snapshots pause when GRAPH_EXTRACTION_ENABLED=false.
 
 # Team
 # TEAM_ID=

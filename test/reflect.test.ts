@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("../src/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -6,6 +6,7 @@ vi.mock("../src/logger.js", () => ({
 
 import { registerReflectFunctions } from "../src/functions/reflect.js";
 import type { Insight, GraphNode, GraphEdge, SemanticMemory, Lesson, Crystal } from "../src/types.js";
+import { KV } from "../src/state/schema.js";
 
 function mockKV() {
   const store = new Map<string, Map<string, unknown>>();
@@ -127,6 +128,7 @@ describe("Reflect", () => {
   let provider: { name: string; compress: ReturnType<typeof vi.fn>; summarize: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "true");
     sdk = mockSdk();
     kv = mockKV();
     provider = {
@@ -137,7 +139,28 @@ describe("Reflect", () => {
     registerReflectFunctions(sdk as never, kv as never, provider as never);
   });
 
+  afterEach(() => vi.unstubAllEnvs());
+
   describe("mem::reflect", () => {
+    it("keeps semantic and lesson reflection without graph reads when automatic graph work is disabled", async () => {
+      vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
+      await kv.set(KV.semantic, "sem_1", makeSemantic("security validation first", "sem_1"));
+      await kv.set(KV.semantic, "sem_2", makeSemantic("security validation second", "sem_2"));
+      const lesson = makeLesson("Use security validation", ["security", "validation"]);
+      await kv.set(KV.lessons, lesson.id, lesson);
+      const list = vi.spyOn(kv, "list");
+
+      const result = await sdk.trigger("mem::reflect", {});
+
+      expect(result).toMatchObject({ success: true, newInsights: 2, usedFallback: true });
+      const insights = await kv.list<Insight>(KV.insights);
+      expect(insights).toHaveLength(2);
+      expect(insights[0].sourceMemoryIds.sort()).toEqual(["sem_1", "sem_2"]);
+      expect(insights[0].sourceLessonIds).toEqual([lesson.id]);
+      expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphNodes);
+      expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphEdges);
+    });
+
     it("returns empty when no graph nodes or memories exist", async () => {
       const result = (await sdk.trigger("mem::reflect", {})) as {
         success: boolean;

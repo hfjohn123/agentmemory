@@ -16,6 +16,7 @@ import {
 } from "../functions/graph-retrieval.js";
 import { extractEntitiesFromQuery } from "../functions/query-expansion.js";
 import { rerank } from "./reranker.js";
+import { isAutomaticGraphEnabled } from "../config.js";
 
 const RRF_K = 60;
 
@@ -106,7 +107,8 @@ export class HybridSearch {
         ? entityHints
         : extractEntitiesFromQuery(query);
     let graphResults: GraphRetrievalResult[] = [];
-    if (entities.length > 0) {
+    const automaticGraphEnabled = isAutomaticGraphEnabled();
+    if (automaticGraphEnabled && entities.length > 0) {
       try {
         graphResults = await this.graphRetrieval.searchByEntities(
           entities,
@@ -119,7 +121,7 @@ export class HybridSearch {
     }
 
     const topVectorObs = vectorResults.slice(0, 5).map((r) => r.obsId);
-    if (topVectorObs.length > 0) {
+    if (automaticGraphEnabled && topVectorObs.length > 0) {
       try {
         const expansionResults =
           await this.graphRetrieval.expandFromChunks(topVectorObs, 1, 5);

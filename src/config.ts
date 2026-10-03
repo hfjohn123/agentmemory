@@ -381,6 +381,10 @@ export function isGraphExtractionEnabled(): boolean {
   return getMergedEnv()["GRAPH_EXTRACTION_ENABLED"] === "true";
 }
 
+export function isAutomaticGraphEnabled(): boolean {
+  return getMergedEnv()["GRAPH_EXTRACTION_ENABLED"] !== "false";
+}
+
 export function getGraphBatchSize(): number {
   return safeParseInt(getMergedEnv()["GRAPH_EXTRACTION_BATCH_SIZE"], 10);
 }
