@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("../src/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -7,6 +7,7 @@ vi.mock("../src/logger.js", () => ({
 import { registerCascadeFunction } from "../src/functions/cascade.js";
 import type { Memory, GraphNode, GraphEdge } from "../src/types.js";
 import { mockKV, mockSdk } from "./helpers/mocks.js";
+import { KV } from "../src/state/schema.js";
 
 describe("Cascade Update Function", () => {
   let sdk: ReturnType<typeof mockSdk>;
@@ -17,6 +18,43 @@ describe("Cascade Update Function", () => {
     kv = mockKV();
     vi.clearAllMocks();
     registerCascadeFunction(sdk as never, kv as never);
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("keeps sibling-memory counts without graph reads when automatic graph work is disabled", async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
+    const memory: Memory = {
+      id: "mem_old",
+      createdAt: "2026-10-02T00:00:00Z",
+      updatedAt: "2026-10-02T00:00:00Z",
+      type: "architecture",
+      title: "React architecture",
+      content: "Old architecture",
+      concepts: ["react", "typescript"],
+      files: [],
+      sessionIds: [],
+      strength: 5,
+      version: 1,
+      isLatest: false,
+      sourceObservationIds: ["obs_old"],
+    };
+    await kv.set(KV.memories, memory.id, memory);
+    await kv.set(KV.memories, "mem_sibling", { ...memory, id: "mem_sibling", isLatest: true });
+    await kv.set(KV.memories, "mem_unrelated", {
+      ...memory, id: "mem_unrelated", concepts: ["python"], isLatest: true,
+    });
+    const list = vi.spyOn(kv, "list");
+
+    const result = await sdk.trigger("mem::cascade-update", { supersededMemoryId: memory.id });
+
+    expect(result).toEqual({
+      success: true,
+      flagged: { nodes: 0, edges: 0, siblingMemories: 1 },
+      total: 1,
+    });
+    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphNodes);
+    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphEdges);
   });
 
   it("returns error when supersededMemoryId is missing", async () => {

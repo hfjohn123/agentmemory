@@ -127,3 +127,21 @@ describe("api::mesh-export project scoping", () => {
     expect((unscoped.body as { oversized?: boolean }).oversized).toBe(true);
   });
 });
+
+describe("api::snapshot-create skipped response", () => {
+  it("returns a skipped snapshot result without claiming HTTP 201 creation", async () => {
+    const sdk = mockSdk();
+    const kv = mockKV();
+    const skipped = { success: false, skipped: true, reason: "automatic-graph-disabled", error: "Full snapshots paused; previous backup unchanged" };
+    registerApiTriggers(sdk as never, kv as never, SECRET);
+    sdk.registerFunction("mem::snapshot-create", async () => skipped);
+
+    const response = await sdk._fns.get("api::snapshot-create")!({
+      headers: { authorization: `Bearer ${SECRET}` },
+      body: { message: "Graph off" },
+    });
+
+    expect(response.body).toEqual(skipped);
+    expect(response.status_code).toBe(409);
+  });
+});

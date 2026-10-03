@@ -129,6 +129,20 @@ describe("Snapshot Functions", () => {
     expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphEdges);
   });
 
+  it("reports graph-off snapshots as skipped without creating a backup or audit", async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
+    const list = vi.spyOn(kv, "list");
+    const set = vi.spyOn(kv, "set");
+
+    const result = await sdk.trigger("mem::snapshot-create", { message: "Graph off" });
+
+    expect(result).toMatchObject({ success: false, skipped: true, reason: "automatic-graph-disabled" });
+    expect(result).not.toHaveProperty("snapshot");
+    expect(list).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+    expect(writeFileSync).not.toHaveBeenCalled();
+  });
+
   it("does not overwrite an existing graph backup with an empty graph when graph work is disabled", async () => {
     vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
     const graphNode: GraphNode = {
