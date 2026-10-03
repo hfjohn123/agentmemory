@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
 vi.mock("../src/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock("../src/config.js", () => ({
+vi.mock("../src/config.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../src/config.js")>(),
   getAgentId: vi.fn(() => undefined),
   isConsolidationEnabled: vi.fn(() => true),
   isGraphExtractionEnabled: vi.fn(() => false),
@@ -24,6 +25,7 @@ import {
 } from "../src/config.js";
 import { isReflectEnabled } from "../src/functions/slots.js";
 import { logger } from "../src/logger.js";
+import type { CompressedObservation } from "../src/types.js";
 
 // event::session::stopped is the single source of truth for consolidation.
 // It fans out mem::summarize (awaited) plus fire-and-forget void triggers for
@@ -37,7 +39,7 @@ function mockKV() {
     set: vi.fn(async (_scope: string, _key: string, data: unknown) => data),
     delete: vi.fn(async () => {}),
     update: vi.fn(async () => {}),
-    list: vi.fn(async () => []),
+    list: vi.fn(async (): Promise<CompressedObservation[]> => []),
   };
 }
 
@@ -83,6 +85,91 @@ describe("event::session::stopped consolidation fan-out", () => {
     vi.mocked(isGraphExtractionEnabled).mockReturnValue(false);
     vi.mocked(isReflectEnabled).mockReturnValue(false);
     vi.mocked(logger.warn).mockClear();
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("does no automatic graph work when extraction is disabled without suppressing summary or consolidation", async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
+    vi.mocked(isGraphExtractionEnabled).mockReturnValue(false);
+    const kv = mockKV();
+    kv.list.mockResolvedValue([{
+      id: "obs_graph_off",
+      sessionId: "ses_1",
+      timestamp: "2026-10-02T00:00:00Z",
+      type: "file_edit",
+      title: "Change authentication",
+      facts: [],
+      narrative: "",
+      concepts: ["authentication"],
+      files: ["src/auth.ts"],
+      importance: 0.5,
+    }]);
+    const { sdk, handlers, trigger } = mockSdk();
+    registerEventTriggers(sdk as never, kv as never);
+
+    const result = await handlers.get("event::session::stopped")!({ sessionId: "ses_1" });
+
+    expect(result).toEqual({ summary: "session summary", sessionId: "ses_1" });
+    expect(functionIds(trigger)).toContain("mem::consolidate-pipeline");
+    expect(functionIds(trigger)).toContain("mem::auto-crystallize");
+    expect(functionIds(trigger)).not.toContain("mem::graph-extract");
+    expect(kv.list).not.toHaveBeenCalled();
+  });
+
+  it("still extracts structured observations when graph extraction is enabled", async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "true");
+    vi.mocked(isGraphExtractionEnabled).mockReturnValue(true);
+    const kv = mockKV();
+    const observation: CompressedObservation = {
+      id: "obs_graph_on",
+      sessionId: "ses_1",
+      timestamp: "2026-10-02T00:00:00Z",
+      type: "file_edit",
+      title: "Change authentication",
+      facts: [],
+      narrative: "",
+      concepts: ["authentication"],
+      files: ["src/auth.ts"],
+      importance: 0.5,
+    };
+    kv.list.mockResolvedValue([observation]);
+    const { sdk, handlers, trigger } = mockSdk();
+    registerEventTriggers(sdk as never, kv as never);
+
+    await handlers.get("event::session::stopped")!({ sessionId: "ses_1" });
+
+    expect(trigger).toHaveBeenCalledWith(expect.objectContaining({
+      function_id: "mem::graph-extract",
+      payload: { observations: [observation] },
+    }));
+  });
+
+  it("preserves automatic keyless extraction when the flag is unset", async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", undefined);
+    const kv = mockKV();
+    const observation: CompressedObservation = {
+      id: "obs_keyless",
+      sessionId: "ses_1",
+      timestamp: "2026-10-02T00:00:00Z",
+      type: "file_edit",
+      title: "Change authentication",
+      facts: [],
+      narrative: "",
+      concepts: ["authentication"],
+      files: ["src/auth.ts"],
+      importance: 0.5,
+    };
+    kv.list.mockResolvedValue([observation]);
+    const { sdk, handlers, trigger } = mockSdk();
+    registerEventTriggers(sdk as never, kv as never);
+
+    await handlers.get("event::session::stopped")!({ sessionId: "ses_1" });
+
+    expect(trigger).toHaveBeenCalledWith(expect.objectContaining({
+      function_id: "mem::graph-extract",
+      payload: { observations: [observation] },
+    }));
   });
 
   it("fires consolidate-pipeline and auto-crystallize when consolidation enabled", async () => {

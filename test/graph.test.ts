@@ -10,6 +10,7 @@ import type {
   GraphNode,
   GraphEdge,
   GraphQueryResult,
+  MemoryProvider,
 } from "../src/types.js";
 
 function mockKV() {
@@ -95,6 +96,36 @@ describe("Graph Functions", () => {
   afterEach(() => {
     if (ORIG_GRAPH_FLAG === undefined) delete process.env["GRAPH_EXTRACTION_ENABLED"];
     else process.env["GRAPH_EXTRACTION_ENABLED"] = ORIG_GRAPH_FLAG;
+  });
+
+  it.each(["false", "true", undefined])("preserves manual keyless extraction with GRAPH_EXTRACTION_ENABLED=%s", async (flag) => {
+    if (flag === undefined) delete process.env["GRAPH_EXTRACTION_ENABLED"];
+    else process.env["GRAPH_EXTRACTION_ENABLED"] = flag;
+    const provider = {
+      name: "noop",
+      compress: vi.fn(async () => ""),
+      summarize: vi.fn(async () => ""),
+    } satisfies MemoryProvider;
+    registerGraphFunction(sdk as never, kv as never, provider);
+
+    const result = await sdk.trigger("mem::graph-extract", {
+      observations: [{
+        ...testObs,
+        files: ["src/auth.ts"],
+        concepts: ["authentication"],
+      }],
+    });
+
+    expect(result).toEqual({ success: true, nodesAdded: 2, edgesAdded: 1 });
+    const nodes = await kv.list<GraphNode>("mem:graph:nodes");
+    expect(nodes.map((node) => `${node.type}:${node.name}`).sort()).toEqual([
+      "concept:authentication",
+      "file:src/auth.ts",
+    ]);
+    const edges = await kv.list<GraphEdge>("mem:graph:edges");
+    expect(edges).toHaveLength(1);
+    expect(edges[0].type).toBe("related_to");
+    expect(provider.compress).not.toHaveBeenCalled();
   });
 
   it("graph-extract creates nodes and edges from XML response", async () => {

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync, writeFileSync } from "node:fs";
 
 vi.mock("../src/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -33,7 +34,8 @@ vi.mock("node:fs", () => ({
 }));
 
 import { registerSnapshotFunction } from "../src/functions/snapshot.js";
-import type { Session, Memory, SnapshotMeta } from "../src/types.js";
+import type { Session, Memory, SnapshotMeta, GraphNode } from "../src/types.js";
+import { KV } from "../src/state/schema.js";
 
 function mockKV() {
   const store = new Map<string, Map<string, unknown>>();
@@ -110,6 +112,54 @@ describe("Snapshot Functions", () => {
       isLatest: true,
     };
     await kv.set("mem:memories", "mem_1", mem);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(readFileSync).mockReturnValue('{"version":"0.4.0","sessions":[],"memories":[]}');
+  });
+
+  it("does not enumerate the graph while explicit graph-off mode is active", async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
+    const list = vi.spyOn(kv, "list");
+
+    await sdk.trigger("mem::snapshot-create", { message: "Graph off" });
+
+    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphNodes);
+    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphEdges);
+  });
+
+  it("does not overwrite an existing graph backup with an empty graph when graph work is disabled", async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
+    const graphNode: GraphNode = {
+      id: "node_existing",
+      type: "file",
+      name: "src/auth.ts",
+      properties: {},
+      sourceObservationIds: ["obs_1"],
+      createdAt: "2026-10-02T00:00:00Z",
+      updatedAt: "2026-10-02T00:00:00Z",
+    };
+    await kv.set(KV.graphNodes, graphNode.id, graphNode);
+    const priorBackup = JSON.stringify({
+      version: "0.9.29",
+      sessions: [],
+      memories: [],
+      graphNodes: [graphNode],
+    });
+    vi.mocked(readFileSync).mockReturnValue(priorBackup);
+    const originalList = kv.list.bind(kv);
+    vi.spyOn(kv, "list").mockImplementation(async (scope) => {
+      if (scope === KV.graphNodes || scope === KV.graphEdges) {
+        throw new Error("Full graph enumeration is forbidden in graph-off mode");
+      }
+      return originalList(scope);
+    });
+
+    await sdk.trigger("mem::snapshot-create", { message: "Graph off" });
+
+    expect(writeFileSync).not.toHaveBeenCalled();
+    expect(await kv.get(KV.graphNodes, graphNode.id)).toEqual(graphNode);
   });
 
   it("snapshot-create serializes state and returns meta", async () => {
