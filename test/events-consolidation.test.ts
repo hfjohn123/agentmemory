@@ -1,6 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    existsSync: (path: import("node:fs").PathLike) =>
+      String(path).replaceAll("\\", "/").endsWith("/.agentmemory/.env")
+        ? false
+        : actual.existsSync(path),
+  };
+});
+
 vi.mock("../src/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -81,6 +92,7 @@ function functionIds(trigger: ReturnType<typeof vi.fn>): string[] {
 
 describe("event::session::stopped consolidation fan-out", () => {
   beforeEach(() => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "true");
     vi.mocked(isConsolidationEnabled).mockReturnValue(true);
     vi.mocked(isGraphExtractionEnabled).mockReturnValue(false);
     vi.mocked(isReflectEnabled).mockReturnValue(false);

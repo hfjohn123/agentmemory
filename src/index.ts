@@ -9,6 +9,7 @@ import {
   loadTeamConfig,
   loadSnapshotConfig,
   isGraphExtractionEnabled,
+  isAutomaticGraphEnabled,
   isAutoCompressEnabled,
   isConsolidationEnabled,
   isContextInjectionEnabled,
@@ -101,7 +102,7 @@ import { DedupMap } from "./functions/dedup.js";
 import { registerHealthMonitor } from "./health/monitor.js";
 import { initMetrics, OTEL_CONFIG } from "./telemetry/setup.js";
 import { VERSION } from "./version.js";
-import { bootLog } from "./logger.js";
+import { bootLog, bootWarn } from "./logger.js";
 import { runtimeMetadataPath } from "./runtime-paths.js";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
@@ -270,7 +271,9 @@ async function main() {
   registerGraphFunction(sdk, kv, provider);
   registerGraphImportFunction(sdk, kv);
   bootLog(
-    `Knowledge graph: structural extraction on (LLM relations ${isGraphExtractionEnabled() ? "enabled" : "off"})`,
+    isAutomaticGraphEnabled()
+      ? `Knowledge graph: automatic structural extraction on (LLM relations ${isGraphExtractionEnabled() ? "enabled" : "off"})`
+      : "Knowledge graph: automatic work off; full snapshots paused; manual operations available",
   );
 
   registerConsolidationPipelineFunction(sdk, kv, provider);
@@ -364,9 +367,11 @@ async function main() {
         .catch(() => {});
     }, snapshotConfig.interval * 1000);
     snapshotTimer.unref();
-    bootLog(
-      `Git snapshots: ${snapshotConfig.dir} (every ${snapshotConfig.interval}s)`,
-    );
+    if (isAutomaticGraphEnabled()) {
+      bootLog(`Git snapshots: ${snapshotConfig.dir} (every ${snapshotConfig.interval}s)`);
+    } else {
+      bootWarn("Git snapshots: paused by GRAPH_EXTRACTION_ENABLED=false; previous backup unchanged");
+    }
   }
 
   const bm25Index = getSearchIndex();
@@ -533,7 +538,9 @@ async function main() {
   // CLI surfaces a compact summary when it sees the worker reach
   // ready state.
   bootLog(
-    `Ready. ${embeddingProvider ? "Triple-stream (BM25+Vector+Graph)" : "BM25+Graph"} search active.`,
+    `Ready. ${isAutomaticGraphEnabled()
+      ? embeddingProvider ? "Triple-stream (BM25+Vector+Graph)" : "BM25+Graph"
+      : embeddingProvider ? "BM25+Vector" : "BM25"} search active.`,
   );
   bootLog(
     `REST API: 130 endpoints at http://localhost:${config.restPort}/agentmemory/*`,

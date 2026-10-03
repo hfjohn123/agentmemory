@@ -4,6 +4,20 @@ All notable changes to agentmemory will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `GRAPH_EXTRACTION_ENABLED=false` now disables implicit graph work at session end, during reflection and supersession updates, and in both hybrid-search graph paths. Unset retains keyless structural extraction. `true` retains structural extraction and enables LLM relations with a provider. Manual graph extraction, build, and import remain available. Non-graph reflection, sibling-memory counts, and lexical and vector search continue.
+
+### Changed
+
+- Full git snapshots pause when `GRAPH_EXTRACTION_ENABLED=false` and preserve the previous backup. Snapshot creation returns `success: false`, `skipped: true`, and `reason: "automatic-graph-disabled"` before storage or git work. REST returns HTTP 409, and MCP preserves this result.
+
+### Upgrade notes
+
+- If you set `GRAPH_EXTRACTION_ENABLED=false`, periodic snapshots now stop. Unset the flag to keep automatic graph work and full backups enabled.
+
 ## [0.9.29] — 2026-08-16
 
 Release wave in two parts. Recall quality: hybrid ranking reaches the primary recall path, lessons get a real index, every record learns where it came from, the knowledge graph populates keyless, and agent scoping threads through all save paths — plus connector parity for pi and Codex, a new DeepSeek Harness connector, current provider model defaults, and a viewer clarity pass. Foundation: the `.env` file now applies everywhere, imports become searchable, consolidation runs on session stop, twelve MCP-only agents get activated on connect, and every capture surface agrees on what "project" means. No breaking changes; read the upgrade notes for behavior changes you will notice.

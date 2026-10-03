@@ -128,6 +128,7 @@ describe("Reflect", () => {
   let provider: { name: string; compress: ReturnType<typeof vi.fn>; summarize: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "true");
     sdk = mockSdk();
     kv = mockKV();
     provider = {

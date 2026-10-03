@@ -50,6 +50,7 @@ describe("HybridSearch", () => {
   let kv: ReturnType<typeof mockKV>;
 
   beforeEach(() => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "true");
     bm25 = new SearchIndex();
     kv = mockKV();
   });

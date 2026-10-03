@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+
+const { gitExecMock } = vi.hoisted(() => ({
+  gitExecMock: vi.fn(async () => ({ stdout: "abc1234\n", stderr: "" })),
+}));
 
 vi.mock("../src/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -20,7 +24,7 @@ vi.mock("node:util", async () => {
   >;
   return {
     ...actual,
-    promisify: () => async () => ({ stdout: "abc1234\n", stderr: "" }),
+    promisify: () => gitExecMock,
   };
 });
 
@@ -34,8 +38,7 @@ vi.mock("node:fs", () => ({
 }));
 
 import { registerSnapshotFunction } from "../src/functions/snapshot.js";
-import type { Session, Memory, SnapshotMeta, GraphNode } from "../src/types.js";
-import { KV } from "../src/state/schema.js";
+import type { Session, Memory, SnapshotMeta } from "../src/types.js";
 
 function mockKV() {
   const store = new Map<string, Map<string, unknown>>();
@@ -82,6 +85,7 @@ describe("Snapshot Functions", () => {
   const snapshotDir = "/tmp/agentmemory-snapshots";
 
   beforeEach(async () => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "true");
     sdk = mockSdk();
     kv = mockKV();
     vi.clearAllMocks();
@@ -119,61 +123,23 @@ describe("Snapshot Functions", () => {
     vi.mocked(readFileSync).mockReturnValue('{"version":"0.4.0","sessions":[],"memories":[]}');
   });
 
-  it("does not enumerate the graph while explicit graph-off mode is active", async () => {
+  it("reports graph-off snapshots as skipped before KV, filesystem writes, or git work", async () => {
     vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
-    const list = vi.spyOn(kv, "list");
-
-    await sdk.trigger("mem::snapshot-create", { message: "Graph off" });
-
-    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphNodes);
-    expect(list.mock.calls.map(([scope]) => scope)).not.toContain(KV.graphEdges);
-  });
-
-  it("reports graph-off snapshots as skipped without creating a backup or audit", async () => {
-    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
+    const get = vi.spyOn(kv, "get");
     const list = vi.spyOn(kv, "list");
     const set = vi.spyOn(kv, "set");
 
     const result = await sdk.trigger("mem::snapshot-create", { message: "Graph off" });
 
     expect(result).toMatchObject({ success: false, skipped: true, reason: "automatic-graph-disabled" });
+    expect(result).toHaveProperty("error", "Full snapshots are paused while GRAPH_EXTRACTION_ENABLED=false. The previous backup is unchanged.");
     expect(result).not.toHaveProperty("snapshot");
+    expect(get).not.toHaveBeenCalled();
     expect(list).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalled();
+    expect(mkdirSync).not.toHaveBeenCalled();
     expect(writeFileSync).not.toHaveBeenCalled();
-  });
-
-  it("does not overwrite an existing graph backup with an empty graph when graph work is disabled", async () => {
-    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "false");
-    const graphNode: GraphNode = {
-      id: "node_existing",
-      type: "file",
-      name: "src/auth.ts",
-      properties: {},
-      sourceObservationIds: ["obs_1"],
-      createdAt: "2026-10-02T00:00:00Z",
-      updatedAt: "2026-10-02T00:00:00Z",
-    };
-    await kv.set(KV.graphNodes, graphNode.id, graphNode);
-    const priorBackup = JSON.stringify({
-      version: "0.9.29",
-      sessions: [],
-      memories: [],
-      graphNodes: [graphNode],
-    });
-    vi.mocked(readFileSync).mockReturnValue(priorBackup);
-    const originalList = kv.list.bind(kv);
-    vi.spyOn(kv, "list").mockImplementation(async (scope) => {
-      if (scope === KV.graphNodes || scope === KV.graphEdges) {
-        throw new Error("Full graph enumeration is forbidden in graph-off mode");
-      }
-      return originalList(scope);
-    });
-
-    await sdk.trigger("mem::snapshot-create", { message: "Graph off" });
-
-    expect(writeFileSync).not.toHaveBeenCalled();
-    expect(await kv.get(KV.graphNodes, graphNode.id)).toEqual(graphNode);
+    expect(gitExecMock).not.toHaveBeenCalled();
   });
 
   it("snapshot-create serializes state and returns meta", async () => {
@@ -230,6 +196,8 @@ describe("Snapshot Functions", () => {
 });
 
 describe("snapshot-create reentrancy guard", () => {
+  beforeEach(() => vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "true"));
+  afterEach(() => vi.unstubAllEnvs());
   // Regression (P2): mem::snapshot-create is triggered by the periodic timer,
   // REST (api::snapshot-create), and MCP. Two runs writing state.json and
   // committing in the same git repo at once race on the index lock. An

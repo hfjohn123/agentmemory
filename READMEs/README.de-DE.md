@@ -1502,6 +1502,8 @@ CONSOLIDATION_ENABLED=true
                                    # Observations are still captured via
                                    # PostToolUse regardless of this flag.
 # GRAPH_EXTRACTION_ENABLED=false
+# English upgrade note: explicit false now pauses automatic graph work and full
+# git snapshots. The existing backup remains unchanged.
 # AGENTMEMORY_LLM_NOTHINK=1        # Local reasoning models only: ask the
                                    # model to skip its hidden thinking pass
                                    # during graph extraction. Faster runs;

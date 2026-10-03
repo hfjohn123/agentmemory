@@ -15,7 +15,7 @@ import { getBoundViewerPort, getViewerSkipped } from "../viewer/server.js";
 import { MAX_FILES_UPPER_BOUND } from "../functions/replay.js";
 import { logger } from "../logger.js";
 import {
-  isGraphExtractionEnabled,
+  isAutomaticGraphEnabled,
   isConsolidationEnabled,
   isAutoCompressEnabled,
   isContextInjectionEnabled,
@@ -199,13 +199,13 @@ export function registerApiTriggers(
       const flags = [
         {
           key: "GRAPH_EXTRACTION_ENABLED",
-          label: "Knowledge graph extraction",
-          enabled: isGraphExtractionEnabled(),
-          default: false,
+          label: "Automatic knowledge graph",
+          enabled: isAutomaticGraphEnabled(),
+          default: true,
           affects: ["Graph", "Dashboard"],
-          needsLlm: true,
-          description: "Extracts entities and relations from observations into a knowledge graph.",
-          enableHow: "Set GRAPH_EXTRACTION_ENABLED=true and provide an LLM key, then restart.",
+          needsLlm: false,
+          description: "Automatic structural extraction and graph use are on unless explicitly false. True also enables LLM relations with a provider. False pauses full snapshots and preserves the previous backup.",
+          enableHow: "Unset GRAPH_EXTRACTION_ENABLED for structural extraction, or set true with an LLM provider for typed relations, then restart. Manual graph operations remain available when false.",
           docsHref: "https://github.com/rohitg00/agentmemory#knowledge-graph",
         },
         {
@@ -1887,9 +1887,13 @@ export function registerApiTriggers(
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
       try {
-        const result = await sdk.trigger({ function_id: "mem::snapshot-create", payload: req.body || {},
-         });
-        return { status_code: 201, body: result };
+        const result = await sdk.trigger<
+          { message?: string },
+          { skipped?: boolean; reason?: string }
+        >({ function_id: "mem::snapshot-create", payload: req.body || {} });
+        const graphDisabled = result.skipped === true &&
+          result.reason === "automatic-graph-disabled";
+        return { status_code: graphDisabled ? 409 : 201, body: result };
       } catch {
         return { status_code: 404, body: { error: "Snapshots not enabled" } };
       }

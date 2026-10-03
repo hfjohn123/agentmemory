@@ -3,6 +3,7 @@ import type { StateKV } from "../state/kv.js";
 import { KV } from "../state/schema.js";
 import type { Memory, GraphNode, GraphEdge } from "../types.js";
 import { recordAudit } from "./audit.js";
+import { isAutomaticGraphEnabled } from "../config.js";
 
 export function registerCascadeFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::cascade-update", 
@@ -22,7 +23,7 @@ export function registerCascadeFunction(sdk: ISdk, kv: StateKV): void {
 
       const obsIds = new Set(superseded.sourceObservationIds || []);
 
-      if (obsIds.size > 0) {
+      if (isAutomaticGraphEnabled() && obsIds.size > 0) {
         const now = new Date().toISOString();
         const nodes = await kv.list<GraphNode>(KV.graphNodes);
         for (const node of nodes) {

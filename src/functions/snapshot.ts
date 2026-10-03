@@ -15,8 +15,16 @@ import type { StateKV } from "../state/kv.js";
 import { recordAudit } from "./audit.js";
 import { VERSION } from "../version.js";
 import { logger } from "../logger.js";
+import { isAutomaticGraphEnabled } from "../config.js";
 
 const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/i;
+
+type SnapshotSkip = {
+  success: false;
+  skipped: true;
+  reason: "automatic-graph-disabled";
+  error: string;
+};
 
 const execFileAsync = promisify(execFile);
 
@@ -49,6 +57,14 @@ export function registerSnapshotFunction(
 
   sdk.registerFunction("mem::snapshot-create",
     async (data?: { message?: string }) => {
+      if (!isAutomaticGraphEnabled()) {
+        return {
+          success: false,
+          skipped: true,
+          reason: "automatic-graph-disabled",
+          error: "Full snapshots are paused while GRAPH_EXTRACTION_ENABLED=false. The previous backup is unchanged.",
+        } satisfies SnapshotSkip;
+      }
       if (snapshotInFlight) {
         return { success: true, message: "Snapshot already in progress" };
       }

@@ -362,7 +362,7 @@ export const V040_TOOLS: McpToolDef[] = [
   },
   {
     name: "memory_snapshot_create",
-    description: "Create a git-versioned snapshot of current memory state.",
+    description: "Create a git-versioned snapshot of current memory state. When GRAPH_EXTRACTION_ENABLED=false, returns a skipped failure with reason automatic-graph-disabled and leaves the previous backup unchanged.",
     inputSchema: {
       type: "object",
       properties: {

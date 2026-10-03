@@ -12,6 +12,7 @@ import type {
 } from "../types.js";
 import { recordAudit } from "./audit.js";
 import { REFLECT_SYSTEM, buildReflectPrompt } from "../prompts/reflect.js";
+import { isAutomaticGraphEnabled } from "../config.js";
 
 interface ConceptCluster {
   concepts: string[];
@@ -170,11 +171,12 @@ export function registerReflectFunctions(
       const maxClusters = Math.min(data?.maxClusters ?? 10, 20);
       const maxInsightsPerCluster = 5;
       const maxTotal = 50;
+      const automaticGraphEnabled = isAutomaticGraphEnabled();
 
       const [graphNodes, graphEdges, semanticMemories, lessons, crystals] =
         await Promise.all([
-          kv.list<GraphNode>(KV.graphNodes).catch(() => []),
-          kv.list<GraphEdge>(KV.graphEdges).catch(() => []),
+          automaticGraphEnabled ? kv.list<GraphNode>(KV.graphNodes).catch(() => []) : [],
+          automaticGraphEnabled ? kv.list<GraphEdge>(KV.graphEdges).catch(() => []) : [],
           kv.list<SemanticMemory>(KV.semantic).catch(() => []),
           kv.list<Lesson>(KV.lessons).catch(() => []),
           kv.list<Crystal>(KV.crystals).catch(() => []),

@@ -14,6 +14,7 @@ describe("Cascade Update Function", () => {
   let kv: ReturnType<typeof mockKV>;
 
   beforeEach(() => {
+    vi.stubEnv("GRAPH_EXTRACTION_ENABLED", "true");
     sdk = mockSdk();
     kv = mockKV();
     vi.clearAllMocks();
